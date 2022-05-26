@@ -24,7 +24,7 @@ export class DataService {
   }
 
   public getTable (tableId: number) {
-    return this.db.prepare(`select * from user_table${tableId}`).all();
+    return this.db.prepare(`select * from user_table_${tableId}`).all();
   }
 
   public addTable (tableName: string, columns: Column[]): number {

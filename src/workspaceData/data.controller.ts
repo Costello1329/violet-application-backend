@@ -25,8 +25,30 @@ export class DataController {
   // }
 
   @Get('table/:id')
-  public async getTable (@Param() params) {
-    return this.dataService.getTable(params.id);
+  public getTable (@Param() params): string {
+    const tableData = this.dataService.getTable(params.id);
+    if (tableData.length === 0)
+      return "";
+
+    const table: string[][] = [];
+
+    const columns = Object.keys(tableData[0]);
+    table.push(["Table", ...columns]);
+
+    for (let row = 0; row < tableData.length; row ++) {
+      console.info(Object.values(tableData[row]));
+      table.push([
+        row.toString(), ...Object.values(tableData[row])
+          .map(val =>val !== null ? val.toString() : "")
+      ]);
+    }
+
+    let data: string = "";
+
+    for (let row = 0; row < table.length; row ++)
+      data += `<tr>${table[row].map(el => `<td>${el}</td>`).join("")}</tr>`;
+
+    return `<table><tbody>${data}</tbody></table>`;
   }
 
   @Post("table/add")
