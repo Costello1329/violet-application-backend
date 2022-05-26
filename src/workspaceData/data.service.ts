@@ -27,7 +27,7 @@ export class DataService {
     return this.db.prepare(`select * from user_table_${tableId}`).all();
   }
 
-  public addTable (tableName: string, columns: Column[]): number {
+  public createTable (tableName: string, columns: Column[]): number {
     this.db.prepare(`insert into user_table (name) values (\'${tableName}\')`).run();
     const tableId = this.db.prepare('select max(id) from user_table').all()[0]['max(id)'];
     
@@ -59,10 +59,54 @@ export class DataService {
     const processedColumns =
       columns.map(column => column.name).join(", ");
 
-    console.info(processedRows);
-    console.info(processedColumns);
-
     const cmd = `insert into user_table_${tableId} (${processedColumns}) values ${processedRows};`;
     this.db.prepare(cmd).run();
+  }
+
+  public createView (tableId: number, name: string, columnNames: string[], rowIndices: number[]) {
+    /// Register new view:
+    this.db.prepare(
+      `create table if not exists user_table_${tableId}_views (
+        id integer primary key autoincrement,
+        name varchar(64)
+      )`
+    ).run();
+
+    this.db.prepare(`insert into user_table_${tableId}_views (name) values(\'${name}\')`).run();
+    const viewId = this.db.prepare(`select max(id) from user_table_${tableId}_views`).all()[0]['max(id)'];
+
+    /// Build cols map:
+    const colsTableName = `user_table_${tableId}_view_${viewId}_cols`;
+
+    this.db.prepare(
+      `create table ${colsTableName} (
+        id integer primary key autoincrement,
+        table_column_name varchar(64),
+        view_col_idx integer
+      )`
+    ).run();
+
+    const processedCols = columnNames.map((name, idx) => `(\'${name}\', ${idx})`).join(",");
+
+    this.db.prepare(
+      `insert into ${colsTableName} (table_column_name, view_col_idx) values ${processedCols};`
+    ).run();
+
+    // Build rows map:
+    const rowsTableName = `user_table_${tableId}_view_${viewId}_rows`;
+
+    this.db.prepare(
+      `create table ${rowsTableName} (
+        id integer primary key autoincrement,
+        table_row_idx integer,
+        view_row_idx integer
+      )`
+    ).run();
+
+    const processedRows = rowIndices.map((initialIdx, idx) => `(${initialIdx}, ${idx})`).join(",");
+
+    this.db.prepare(
+      `insert into ${rowsTableName} (table_row_idx, view_row_idx) values ${processedRows};`
+    ).run();
   }
 }

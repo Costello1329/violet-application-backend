@@ -1,6 +1,5 @@
-import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Column } from 'src/models/Column';
-import { ColumnType } from 'src/models/ColumnType';
 import { Row } from 'src/models/Row';
 import { DataService } from './data.service';
 
@@ -8,21 +7,6 @@ import { DataService } from './data.service';
 @Controller()
 export class DataController {
   public constructor (private readonly dataService: DataService) {}
-
-  // public async getTable (@Param() params) {
-  //   const cols = [{ name: "name", type: ColumnType.String }];
-  //   const tableId = this.dataService.addTable("employee", cols);
-
-  //   const newCols = [{ name: "last_name", type: ColumnType.String }, { name: "age", type: ColumnType.Integer }];
-  //   this.dataService.addOrDropColumns(tableId, newCols, true);
-
-  //   this.dataService.addRows(tableId, [...cols, ...newCols], [
-      // { fields: ["george", "johns",  31] },
-      // { fields: ["john", "ziggs", 18] },
-      // { fields: ["ker", "figgs", 11] },
-      // { fields: ["dim", "higgs", 51] }
-  //   ]);
-  // }
 
   @Get('table/:id')
   public getTable (@Param() params): string {
@@ -35,13 +19,11 @@ export class DataController {
     const columns = Object.keys(tableData[0]);
     table.push(["Table", ...columns]);
 
-    for (let row = 0; row < tableData.length; row ++) {
-      console.info(Object.values(tableData[row]));
+    for (let row = 0; row < tableData.length; row ++)
       table.push([
         row.toString(), ...Object.values(tableData[row])
           .map(val =>val !== null ? val.toString() : "")
       ]);
-    }
 
     let data: string = "";
 
@@ -51,16 +33,16 @@ export class DataController {
     return `<table><tbody>${data}</tbody></table>`;
   }
 
-  @Post("table/add")
-  public newTable (
+  @Post("table/create")
+  public createTable (
     @Body('tableName') tableName: string,
     @Body('columns') columns: Column[]
   ): string {
-    return `New table created: ${this.dataService.addTable(tableName, columns)}`;
+    return `New table created: ${this.dataService.createTable(tableName, columns)}`;
   }
 
   @Post("table/alter")
-  public alterColumns (
+  public alterTable (
     @Body('tableId') tableId: number,
     @Body('columns') columns: Column[],
     @Body('type') type: "add" | "drop"
@@ -70,7 +52,7 @@ export class DataController {
   }
 
   @Post("table/append")
-  public insert (
+  public insertIntoTable (
     @Body('tableId') tableId: number,
     @Body('columns') columns: Column[],
     @Body('rows') rows: Row[]
@@ -78,24 +60,13 @@ export class DataController {
     this.dataService.addRows(tableId, columns, rows);
   }
 
-  // @Put('fill')
-  // public async fillDatabaseWithData (
-  //   @Body('workSpacesCountMin') workSpacesCountMin: number,
-  //   @Body('workSpacesCountMax') workSpacesCountMax: number,
-  //   @Body('tablesCountMin') tablesCountMin: number,
-  //   @Body('tablesCountMin') tablesCountMax: number,
-  //   @Body('columnsCountMin') columnsCountMin: number,
-  //   @Body('columnsCountMax') columnsCountMax: number,
-  //   @Body('rowsCountMin') rowsCountMin: number,
-  //   @Body('rowsCountMax') rowsCountMax: number
-  // ): Promise<string> {
-  //   return this.dataService.clearDataBase()
-  //     .then(() => this.dataService.addColumnTypes())
-  //     .then(() => this.dataService.genTestData(
-  //       [workSpacesCountMin, workSpacesCountMax],
-  //       [tablesCountMin, tablesCountMax],
-  //       [columnsCountMin, columnsCountMax],
-  //       [rowsCountMin, rowsCountMax]
-  //     )).then(() => "finished");
-  // }
+  @Post("view/create")
+  public createView (
+    @Body('tableId') tableId: number,
+    @Body('name') name: string,
+    @Body('columnNames') columnNames: string[],
+    @Body('rowIndices') rowIndices: number[]
+  ) {
+    this.dataService.createView(tableId, name, columnNames, rowIndices);
+  }
 }
