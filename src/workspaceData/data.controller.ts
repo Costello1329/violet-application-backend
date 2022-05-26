@@ -8,9 +8,7 @@ import { DataService } from './data.service';
 export class DataController {
   public constructor (private readonly dataService: DataService) {}
 
-  @Get('table/:id')
-  public getTable (@Param() params): string {
-    const tableData = this.dataService.getTable(params.id);
+  private drawSelectResult (tableData): string {
     if (tableData.length === 0)
       return "";
 
@@ -31,6 +29,11 @@ export class DataController {
       data += `<tr>${table[row].map(el => `<td>${el}</td>`).join("")}</tr>`;
 
     return `<table><tbody>${data}</tbody></table>`;
+  }
+
+  @Get('table/:id')
+  public getTable (@Param() params): string {
+    return this.drawSelectResult(this.dataService.getTable(params.id));
   }
 
   @Post("table/create")
@@ -58,6 +61,11 @@ export class DataController {
     @Body('rows') rows: Row[]
   ): void {
     this.dataService.addRows(tableId, columns, rows);
+  }
+
+  @Get("table/:table_id/view/:view_id")
+  public getView (@Param() params) {
+    return this.drawSelectResult(this.dataService.getView(params.table_id, params.view_id));
   }
 
   @Post("view/create")

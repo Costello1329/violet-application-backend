@@ -1,5 +1,3 @@
-db/*.db
-
 # compiled output
 /dist
 /node_modules

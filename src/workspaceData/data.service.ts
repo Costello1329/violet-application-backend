@@ -109,4 +109,22 @@ export class DataService {
       `insert into ${rowsTableName} (table_row_idx, view_row_idx) values ${processedRows};`
     ).run();
   }
+
+  public getView (tableId: number, viewId: number) {
+    const colsTableName = `user_table_${tableId}_view_${viewId}_cols`;
+    const columnNames = this.db.prepare(
+      `select table_column_name from ${colsTableName} order by view_col_idx`
+    ).all().map(row => row['table_column_name']).join(", ");
+    
+    const rowsTableName = `user_table_${tableId}_view_${viewId}_rows`;
+    const rowIdices = this.db.prepare(
+      `select table_row_idx from ${rowsTableName} order by view_row_idx`
+    ).all().map(row => row['table_row_idx']);
+
+    let view: any[] = rowIdices.map(idx => this.db.prepare(
+      `select ${columnNames} from user_table_${tableId} limit ${idx}, 1`
+    ).all()[0]);
+    
+    return view;
+  }
 }
