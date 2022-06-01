@@ -11,31 +11,31 @@ export class DataService {
 
   constructor () {
     this.db = new DatabaseClass('src/db/workspace.db');
-    this.setupDb();
-  }
 
-  private setupDb () {
     this.db.prepare(
-      `create table if not exists user_table(
+      `create table if not exists ${this.userTablesName()}(
         id integer primary key autoincrement,
         name varchar(64)
       )`
     ).run();
   }
 
-  public getTable (tableId: number) {
-    return this.db.prepare(`select * from user_table_${tableId}`).all();
+  public getUserTable (tableId: number) {
+    return this.db.prepare(`select * from ${this.userTableName(tableId)}`).all();
   }
 
-  public createTable (tableName: string, columns: Column[]): number {
-    this.db.prepare(`insert into user_table (name) values (\'${tableName}\')`).run();
-    const tableId = this.db.prepare('select max(id) from user_table').all()[0]['max(id)'];
+  public createUserTable (tableName: string, columns: Column[]): number {
+    this.db.prepare(`insert into ${this.userTablesName()} (name) values (\'${tableName}\')`).run();
+    const tableId = this.db.prepare(`select max(id) from ${this.userTablesName()}`).all()[0]['max(id)'];
     
-    const processColumn = (column: Column) =>
-      `${column.name} ${column.type}`;
-    
+    const processColumn =
+      (column: Column) => `${this.userColumnName(column.name)} ${column.type}`;
+
     this.db.prepare(
-      `create table user_table_${tableId} (${columns.map(processColumn).join(", ")})`
+      `create table ${this.userTableName(tableId)} (
+        id integer primary key autoincrement,
+        ${columns.map(processColumn).join(',\n')}
+      )`
     ).run();
 
     return tableId;
@@ -43,88 +43,95 @@ export class DataService {
 
   public addOrDropColumns (tableId: number, columns: Column[], addOrDrop: boolean) {
     const getCommand = (addOrDrop, column: Column) =>
-      `${addOrDrop ? "add" : "drop"} ${column.name} ${column.type}`;
+      `${addOrDrop ? 'add' : 'drop'} ${this.userColumnName(column.name)} ${column.type}`;
 
-    for (const column of columns)
-      this.db.prepare(`alter table user_table_${tableId} ${getCommand(addOrDrop, column)}`).run();
+    this.db.prepare(columns.map(column =>
+      `alter table ${this.userTableName(tableId)} ${getCommand(addOrDrop, column)};`
+    ).join('\n')).run();
   }
 
   public addRows (tableId: number, columns: Column[], rows: Row[]) {
-    const processRow = (row: Row) => {
-      return `(${row.fields.map((field, i) => convertField(field, columns[i].type)).join(", ")})`;
-    }
+    const processRow = (row: Row) =>
+      `(${row.fields.map((field, i) => convertField(field, columns[i].type)).join(', ')})`;
 
-    const processedRows = rows.map(processRow).join(", ");
+    /// TODO: iterate over views and add row to them (get max and add?)
 
-    const processedColumns =
-      columns.map(column => column.name).join(", ");
-
-    const cmd = `insert into user_table_${tableId} (${processedColumns}) values ${processedRows};`;
-    this.db.prepare(cmd).run();
+    const processedRows = rows.map(processRow).join(', ');
+    const processedColumns = columns.map(column => this.userColumnName(column.name)).join(', ');
+    this.db.prepare(
+      `insert into ${this.userTableName(tableId)} (${processedColumns}) values ${processedRows};`
+    ).run();
   }
 
-  public createView (tableId: number, name: string, columnNames: string[], rowIndices: number[]) {
+  public createView (tableId: number, viewName: string, columnNames: string[]) {
     /// Register new view:
     this.db.prepare(
-      `create table if not exists user_table_${tableId}_views (
+      `create table if not exists ${this.userViewsName(tableId)} (
         id integer primary key autoincrement,
         name varchar(64)
       )`
     ).run();
 
-    this.db.prepare(`insert into user_table_${tableId}_views (name) values(\'${name}\')`).run();
-    const viewId = this.db.prepare(`select max(id) from user_table_${tableId}_views`).all()[0]['max(id)'];
+    this.db.prepare(`insert into ${this.userViewsName(tableId)} (name) values(\'${viewName}\')`).run();
+    const viewId = this.db.prepare(`select max(id) from ${this.userViewsName(tableId)}`).all()[0]['max(id)'];
 
-    /// Build cols map:
-    const colsTableName = `user_table_${tableId}_view_${viewId}_cols`;
+    /// Build col map:
+    const processedCols = columnNames.map((name, idx) => `(\'${name}\', ${idx})`).join(',');
 
     this.db.prepare(
-      `create table ${colsTableName} (
+      `create table ${this.userViewColsName(tableId, viewId)} (
         id integer primary key autoincrement,
-        table_column_name varchar(64),
-        view_col_idx integer
-      )`
+        name varchar(64),
+        idx integer
+      );`
     ).run();
 
-    const processedCols = columnNames.map((name, idx) => `(\'${name}\', ${idx})`).join(",");
-
     this.db.prepare(
-      `insert into ${colsTableName} (table_column_name, view_col_idx) values ${processedCols};`
+      `insert into ${this.userViewColsName(tableId, viewId)} (name, idx) values ${processedCols};`
     ).run();
 
-    // Build rows map:
-    const rowsTableName = `user_table_${tableId}_view_${viewId}_rows`;
-
+    /// Build row map:
     this.db.prepare(
-      `create table ${rowsTableName} (
+      `create table ${this.userViewRowsName(tableId, viewId)} (
         id integer primary key autoincrement,
-        table_row_idx integer,
-        view_row_idx integer
-      )`
+        tid integer not null,
+        idx integer,
+        foreign key(tid) references ${this.userTableName(tableId)}(id)
+          on update cascade
+          on delete cascade
+      );`
     ).run();
 
-    const processedRows = rowIndices.map((initialIdx, idx) => `(${initialIdx}, ${idx})`).join(",");
+    const processedRows = this.db
+      .prepare(`select id from ${this.userTableName(tableId)}`)
+      .all()
+      .map((row, idx) => `(${row['id']}, ${idx})`)
+      .join(', ');
 
     this.db.prepare(
-      `insert into ${rowsTableName} (table_row_idx, view_row_idx) values ${processedRows};`
+      `insert into ${this.userViewRowsName(tableId, viewId)} (tid, idx) values ${processedRows}`
     ).run();
   }
 
   public getView (tableId: number, viewId: number) {
-    const colsTableName = `user_table_${tableId}_view_${viewId}_cols`;
-    const columnNames = this.db.prepare(
-      `select table_column_name from ${colsTableName} order by view_col_idx`
-    ).all().map(row => row['table_column_name']).join(", ");
-    
-    const rowsTableName = `user_table_${tableId}_view_${viewId}_rows`;
-    const rowIdices = this.db.prepare(
-      `select table_row_idx from ${rowsTableName} order by view_row_idx`
-    ).all().map(row => row['table_row_idx']);
+    const left = this.userTableName(tableId);
+    const right = this.userViewRowsName(tableId, viewId);
 
-    let view: any[] = rowIdices.map(idx => this.db.prepare(
-      `select ${columnNames} from user_table_${tableId} limit ${idx}, 1`
-    ).all()[0]);
-    
-    return view;
+    const columnNames = this.db.prepare(
+      `select name from ${this.userViewColsName(tableId, viewId)} order by idx`
+    ).all().map(row => `${left}.${this.userColumnName(row['name'])}`).join(', ');
+
+    return this.db.prepare(
+      `select ${columnNames} from ${left}
+      inner join ${right} on ${left}.id = ${right}.tid
+      order by idx`
+    ).all();
   }
+
+  private readonly userTablesName = () => 'user_tables';
+  private readonly userTableName = (tableId: number) => `user_table_${tableId}`;
+  private readonly userViewsName = (tableId: number) => `user_table_${tableId}_views`;
+  private readonly userViewRowsName = (tableId: number, viewId: number) => `user_table_${tableId}_view_${viewId}_rows`;
+  private readonly userViewColsName = (tableId: number, viewId: number) => `user_table_${tableId}_view_${viewId}_cols`;
+  private readonly userColumnName = (columnName: string) => `uc_${columnName}`;
 }

@@ -33,7 +33,7 @@ export class DataController {
 
   @Get('table/:id')
   public getTable (@Param() params): string {
-    return this.drawSelectResult(this.dataService.getTable(params.id));
+    return this.drawSelectResult(this.dataService.getUserTable(params.id));
   }
 
   @Post("table/create")
@@ -41,7 +41,7 @@ export class DataController {
     @Body('tableName') tableName: string,
     @Body('columns') columns: Column[]
   ): string {
-    return `New table created: ${this.dataService.createTable(tableName, columns)}`;
+    return `New table created: ${this.dataService.createUserTable(tableName, columns)}`;
   }
 
   @Post("table/alter")
@@ -71,10 +71,9 @@ export class DataController {
   @Post("view/create")
   public createView (
     @Body('tableId') tableId: number,
-    @Body('name') name: string,
-    @Body('columnNames') columnNames: string[],
-    @Body('rowIndices') rowIndices: number[]
+    @Body('viewName') viewName: string,
+    @Body('columnNames') columnNames: string[]
   ) {
-    this.dataService.createView(tableId, name, columnNames, rowIndices);
+    this.dataService.createView(tableId, viewName, columnNames);
   }
 }
