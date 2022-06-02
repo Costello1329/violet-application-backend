@@ -7,6 +7,9 @@ import { Row } from 'src/models/Row';
 import { ColumnType } from 'src/models/ColumnType';
 import { fromSqlType } from 'src/helpers/fromSqlType';
 import { fieldToSqlLiteral } from 'src/helpers/fieldToSqlLiteral';
+import { FilterOperator, GeneralFilterOperator } from 'src/models/FilterOperator';
+import { restoreTypeOfFilterValue } from 'src/helpers/restoreTypeOfFilterValue';
+import { operatorToSqlOperator } from 'src/helpers/operatorToSqlOperator';
 
 @Injectable()
 export class DataService {
@@ -182,13 +185,26 @@ export class DataService {
     this.db.prepare(
       `insert into ${this.userViewRowsName(tableId, viewId)} (tid, idx) values ${rowValues}`
     ).run();
+
+    /// Prepare filters:
+    this.db.prepare(
+      `create table ${this.userViewFiltersName(tableId, viewId)} (
+        id integer primary key autoincrement,
+        columnId integer not null,
+        value varchar(255) not null,
+        operator varchar(255) not null,
+        foreign key(columnId) references ${this.userTableName(tableId)}(id)
+          on update cascade
+          on delete cascade
+      )`
+    ).run();
   }
 
   public toggleViewColumns (tableId: number, viewId: number, columnId: number[], active: boolean) {
     const predicate = columnId.map(colId => `tid = ${colId}`).join(' or ');
     this.db.prepare(
       `update ${this.userViewColsName(tableId, viewId)}
-      set active = ${active ? 1 : 0}
+      set active = ${fieldToSqlLiteral(active, ColumnType.Boolean)}
       where ${predicate}`
     ).run();;
   }
@@ -234,21 +250,59 @@ export class DataService {
     const tRows = this.userTableName(tableId);
     const vRows = this.userViewRowsName(tableId, viewId);
 
+    /// Prepare filter
+    const filter = this.db.prepare(`select * from ${this.userViewFiltersName(tableId, viewId)}`).all().map(
+      ({ columnId, operator, value }) => {
+        const columnType: ColumnType = fromSqlType(this.db.prepare(
+          `select type from ${this.userTableColsName(tableId)} where id = ${columnId}`
+        ).all()[0]['type']);
+        const columnName = this.userColumnName(columnId);
+        const sqlOperator = operatorToSqlOperator(operator) as FilterOperator;
+        const resstoredValue = restoreTypeOfFilterValue(value, columnType);
+        const expressionParts = [columnName, sqlOperator];
+        if (sqlOperator !== GeneralFilterOperator.isEmpty && sqlOperator !== GeneralFilterOperator.isNotEmpty)
+          expressionParts.push(fieldToSqlLiteral(resstoredValue, columnType));
+        return expressionParts.join(' ');
+      }
+    );
+    const filterExpression = filter.length === 0 ? '' : `where ${filter.join(' and ')}`;
+
     /// should add order by twice so the pagination is supported
+    const left = `select id, ${columnNames} from ${tRows} ${filterExpression}`;
+    const right = `select * from ${vRows} order by idx limit ${offset}, ${limit}`;
     return this.db.prepare(
       `select ${columnNames} from
-      ${tRows} inner join (select * from ${vRows} order by idx limit ${offset}, ${limit}) as page
-      on ${tRows}.id = page.tid
+      (${left}) as filtered_data inner join (${right}) as page
+      on filtered_data.id = page.tid
       order by idx`
     ).all();
+  }
+
+  public addFilter (tableId: number, viewId: number, columnId: number, value: any, operator: FilterOperator) {
+    const columnType: ColumnType = fromSqlType(this.db.prepare(
+      `select type from ${this.userTableColsName(tableId)} where id = ${columnId}`
+    ).all()[0]['type']);
+
+    this.db.prepare(
+      `insert into ${this.userViewFiltersName(tableId, viewId)} (columnId, value, operator)
+      values (${columnId}, ${fieldToSqlLiteral(value, columnType)}, ${fieldToSqlLiteral(operator, ColumnType.String)})`
+    ).run();
+  }
+
+  public removeFilter (tableId: number, viewId: number, filterId: number) {
+    this.db.prepare(`delete ${this.userViewFiltersName(tableId, viewId)} where id = ${filterId}`).run();
   }
 
   private readonly userTablesName = () => 'user_tables';
   private readonly userTableName = (tableId: number) => `user_table_${tableId}`;
   private readonly userTableColsName = (tableId: number) => `user_table_${tableId}_cols`;
   private readonly userViewsName = (tableId: number) => `user_table_${tableId}_views`;
-  private readonly userViewRowsName = (tableId: number, viewId: number) => `user_table_${tableId}_view_${viewId}_rows`;
-  private readonly userViewColsName = (tableId: number, viewId: number) => `user_table_${tableId}_view_${viewId}_cols`;
+  private readonly userViewRowsName = (tableId: number, viewId: number) =>
+    `user_table_${tableId}_view_${viewId}_rows`;
+  private readonly userViewColsName = (tableId: number, viewId: number) =>
+    `user_table_${tableId}_view_${viewId}_cols`;
+  private readonly userViewFiltersName = (tableId: number, viewId: number) =>
+    `user_table_${tableId}_view_${viewId}_filters`;
   private readonly userColumnName = (columnId: number) => `uc_${columnId}`;
 
   private selectMaxColumnValueFromTable = (tableName: string, columnName = 'id') => {

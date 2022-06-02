@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Column } from 'src/models/Column';
+import { FilterOperator } from 'src/models/FilterOperator';
 import { Row } from 'src/models/Row';
 import { DataService } from './data.service';
 
@@ -108,6 +109,17 @@ export class DataController {
     @Body('tIdx') tIdx: number
   ) {
     this.dataService.shiftViewRows(tableId, viewId, sIdx, tIdx);
+  }
+
+  @Post('view/add_filter')
+  public addFilter (
+    @Body('tableId') tableId: number,
+    @Body('viewId') viewId: number,
+    @Body('columnId') columnId: number,
+    @Body('value') value: any,
+    @Body('operator') operator: FilterOperator
+  ) {
+    this.dataService.addFilter(tableId, viewId, columnId, value, operator);
   }
 
   @Get('table/:id')
