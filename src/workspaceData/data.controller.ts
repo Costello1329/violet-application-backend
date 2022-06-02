@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Column } from 'src/models/Column';
-import { FilterOperator } from 'src/models/FilterOperator';
+import { ColumnType } from 'src/models/ColumnType';
+import { FilterOperator, NumberFilterOperator } from 'src/models/FilterOperator';
 import { Row } from 'src/models/Row';
 import { DataService } from './data.service';
 
@@ -36,8 +38,8 @@ export class DataController {
   public createTable (
     @Body('tableName') tableName: string,
     @Body('columns') columns: Column[]
-  ): string {
-    return `New table created: ${this.dataService.createUserTable(tableName, columns)}`;
+  ): number {
+    return this.dataService.createUserTable(tableName, columns);
   }
 
   @Post('table/add_columns')
@@ -122,6 +124,15 @@ export class DataController {
     this.dataService.addFilter(tableId, viewId, columnId, value, operator);
   }
 
+  @Post('view/remove_filter')
+  public removeFilter (
+    @Body('tableId') tableId: number,
+    @Body('viewId') viewId: number,
+    @Body('filterId') filterId: number
+  ) {
+    this.dataService.removeFilter(tableId, viewId, filterId);
+  }
+
   @Get('table/:id')
   public getTable (@Param() params): string {
     return this.drawSelectResult(this.dataService.getUserTable(params.id));
@@ -136,5 +147,43 @@ export class DataController {
       pageSize,
       params.page_id * pageSize
     ));
+  }
+
+  /// Test:
+  @Post('prepare_test')
+  public prepareTest () {
+    const width = 100;
+    const height = 10000;
+
+    const maxNumVal = 1000;
+
+    const columns: Column[] = [];
+    const rows: Row[] = [];
+
+    for (let i = 0; i < width; i ++)
+      columns.push({ name: `col_${i}`, type: i % 10 === 0 ? ColumnType.Integer : ColumnType.String});
+
+    for (let i = 0; i < height; i ++)
+      rows.push({ fields: columns.map(({ type }) =>
+        type === ColumnType.Integer ?
+          Math.floor(Math.random() * maxNumVal) :
+          randomUUID().split('-')[0]
+      )});
+
+    const tableId = this.createTable('Just a table', columns);
+    this.insertRows(tableId, columns.map((_, i) => i + 1), rows);
+    this.createView(tableId, 'New view');
+
+    for (let i = 0; i < width - 1; i ++)
+      this.shiftColumns(tableId, 1, width - 1, i);
+
+    this.toggleColumns(tableId, 1, Array.from(Array(width / 2).keys()).map(i => 2 + i * 2), false);
+
+    for (let i = 0; i < width / 10; i ++)
+      this.addFilter(
+        tableId, 1, 10 * i + 1,
+        i % 2 === 0 ? 100 : 900,
+        i % 2 === 0 ? NumberFilterOperator.greater : NumberFilterOperator.less
+      );
   }
 }

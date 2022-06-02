@@ -269,12 +269,11 @@ export class DataService {
 
     /// should add order by twice so the pagination is supported
     const left = `select id, ${columnNames} from ${tRows} ${filterExpression}`;
-    const right = `select * from ${vRows} order by idx limit ${offset}, ${limit}`;
     return this.db.prepare(
       `select ${columnNames} from
-      (${left}) as filtered_data inner join (${right}) as page
+      (${left}) as filtered_data inner join ${vRows} as page
       on filtered_data.id = page.tid
-      order by idx`
+      order by idx limit ${offset}, ${limit}`
     ).all();
   }
 
