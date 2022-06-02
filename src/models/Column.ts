@@ -1,4 +1,4 @@
-import { ColumnType } from "./ColumnType";
+import { ColumnType } from './ColumnType';
 
 export interface Column {
   type: ColumnType,

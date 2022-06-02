@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
-import { DataHttpModule } from './workspaceData/data-http.module';
+import { DataModule } from './workspaceData/data.module';
 
 @Module({
-  imports: [DataHttpModule, DataHttpModule],
+  imports: [DataModule],
 })
 export class AppModule {}
